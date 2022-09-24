@@ -30,4 +30,12 @@ Optionally one can provide a `suffix` strings that would be appended or prepende
   with:
     github_token: ${{github.token}}
     days: 10
+ - name: Delete branch in specific repository with a specific owner
+   uses: dawidd6/action-delete-branch@v3
+   with:
+    github_token: ${{github.token}}
+    owner: specific-owner
+    repository: specific-repository
+    branches: test
+    suffix: -done
 ```

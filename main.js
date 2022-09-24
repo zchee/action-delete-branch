@@ -5,6 +5,8 @@ async function main() {
     try {
         const token = core.getInput("github_token", { required: true })
         const numbers = core.getInput("numbers")
+        const owner = core.getInput("owner")
+        const repository = core.getInput("repository")
         const branches = core.getInput("branches")
         const prefix = core.getInput("prefix")
         const suffix = core.getInput("suffix")
@@ -17,12 +19,12 @@ async function main() {
 
         let branchesToDelete = branches ? branches.split(",") : []
         let dateThreshold = new Date();
-        
+
         if (days) {
             dateThreshold.setDate(dateThreshold.getDate() - days);
             console.log("Branches with commits older than " + dateThreshold.toString() + " will be deleted.");
         }
-        
+
         if (numbers) {
             for (const number of numbers.split(",")) {
                 const pull = await client.pulls.get({
@@ -32,28 +34,17 @@ async function main() {
                 branchesToDelete.push(pull.data.head.ref)
             }
         }
-        
-        if (prefix) {
-            const branchFunc = await client.paginate("GET /repos/{owner}/{repo}/branches", {
-                owner: ownerName,
-                repo: repoName
-            })
-            .then((branches) => {
-               for (let branch of branches) {
-                   if (branch.name.substring(0, prefix.length) == prefix) {
-                       console.log("Adding branch: " + branch.name + " for deletion.");
-                       branchesToDelete.push(branch.name)
-                   }
-               }
-            });
-        }
-        
-        console.log("Starting the branch deletion...");        
+
+        let ownerOfRepository = owner ? owner : github.context.repo.owner
+        let repositoryContainingBranches = repository ? repository : github.context.repo.repo
+
         for (let branch of branchesToDelete) {
-            
+            if (prefix)
+                branch = prefix + branch
+
             if (suffix)
                 branch = branch + suffix
-            
+
             let canDelete = true;
             if (days) {
                 await client.request("GET /repos/{owner}/{repo}/branches/{branch}", {
@@ -69,17 +60,27 @@ async function main() {
                     }
                 });
             }
-            
+
             if (!canDelete)
                 continue;
-            
-            console.log("==> Deleting \"" + branch + "\" branch");
+
+            console.log("==> Deleting \"" + ownerOfRepository + "/" + repositoryContainingBranches + "/" + branch + "\" branch")
 
             if (!dryRun) {
-                await client.git.deleteRef({
-                    ...github.context.repo,
-                    ref: "heads/" + branch
-                })
+                try {
+                    await client.git.deleteRef({
+                        owner: ownerOfRepository,
+                        repo: repositoryContainingBranches,
+                        ref: "heads/" + branch
+                    })
+                } catch (error) {
+                    const shouldFailSoftly = (soft_fail === 'true');
+
+                    if(shouldFailSoftly)
+                        core.warning(error.message)
+                    else
+                        core.setFailed(error.message)
+                }
             }
         }
         console.log("Ending the branch deletion...");
